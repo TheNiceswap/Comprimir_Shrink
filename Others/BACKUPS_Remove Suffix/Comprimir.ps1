@@ -58,8 +58,9 @@ foreach ($tmp in (Get-ChildItem -Path $RutaEntrada -File | Where-Object Extensio
     }
 }
 
-$rutaCarpetaShutter = "C:\Program Files\Shutter Encoder\app\Library"
-$rutaFFmpegShutter = Join-Path $rutaCarpetaShutter "ffmpeg.exe"
+$RutaCarpetaOtros = Join-Path $PSScriptRoot "Others"
+$RutaFfmpeg = Join-Path $RutaCarpetaOtros "ffmpeg.exe"
+$RutaFfprobe = $RutaFfmpeg -replace "ffmpeg\.exe", "ffprobe.exe"
 
 $extensionesVideo = @('.3gp', '.asf', '.avi', '.flv', '.m2ts', '.m4v', '.mkv', '.mov', '.mp4','.mpe', '.mpeg', '.mpg', '.mts', '.ogv','.rmvb', '.ts', '.vob', '.webm', '.wmv')
 
@@ -130,17 +131,15 @@ while ($colaArchivos.Count -gt 0) {
   #  Copy-Item -LiteralPath $rutaTemporalOrigen -Destination $copiaVirtualOriginal -Force  
       cmd.exe /c copy /b /y "$rutaTemporalOrigen" "$copiaVirtualOriginal" > $null
 
-    # 3. Se ejecuta FFmpeg sobre Z:\Trabajo de forma limpia (sin stats ni ruido en consola) 
-
-    Push-Location $rutaCarpetaShutter
+    # 3. Se ejecuta FFmpeg sobre Z:\Trabajo de forma limpia (sin stats ni ruido en consola)
+    Push-Location $RutaCarpetaOtros
     $maximo = (Get-Item -LiteralPath $copiaVirtualOriginal).Length 
 
 # Extracción automática de la tasa de fotogramas mediante ffprobe
-    $ffprobePath = $rutaFFmpegShutter -replace "ffmpeg\.exe", "ffprobe.exe"
-    $fpsRaw = & "$ffprobePath" -v quiet -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 "$copiaVirtualOriginal" 2>$null
-    $framerateArgs = if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($fpsRaw) -and $fpsRaw.Trim() -ne "0/0") { @("-r", $fpsRaw.Trim()) } else { @() }
+   $FpsBruto = & "$RutaFfprobe" -v quiet -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 "$copiaVirtualOriginal" 2>$null
+    $ArgTasa = if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($FpsBruto) -and $FpsBruto.Trim() -ne "0/0") { @("-r", $FpsBruto.Trim()) } else { @() }
 
-& "$rutaFFmpegShutter" -strict experimental -hide_banner -threads 0 -hwaccel auto -nostdin -nostats -loglevel quiet -i "$copiaVirtualOriginal" -fs $maximo @framerateArgs -vf "scale='min(1920,iw)':-2:flags=lanczos" -c:v hevc_nvenc -b_ref_mode 0 -crf $env:QC -qp $env:QC -profile:v main -map v:0? -c:a copy -map a? -pix_fmt yuv420p -tag:v hvc1 -y "$rutaSalidaTemporal"   2>&1 | Out-Null
+& "$RutaFfmpeg" -strict experimental -hide_banner -threads 0 -hwaccel auto -nostdin -nostats -loglevel quiet -i "$copiaVirtualOriginal" -fs $maximo @ArgTasa -vf "scale='min(1920,iw)':-2:flags=lanczos" -c:v hevc_nvenc -b_ref_mode 0 -crf $env:QC -qp $env:QC -profile:v main -map v:0? -c:a copy -map a? -pix_fmt yuv420p -tag:v hvc1 -y "$rutaSalidaTemporal"   2>&1 | Out-Null
 
  # >$null 2>$null
 
@@ -254,7 +253,7 @@ Add-Content -Path $RutaInforme -Value $lineaInformeArchivo -Encoding utf8
 [Console]::Write("`r$([char]27)[2K[Procesando $indiceActual + $indiceERR de $totalArchivos]   $pesoInicialStr -> $pesoGeneradoStr    ($porcentajeStr)    Tiempo: $duracionFormateada    Vel: $velocidadStr`n")
 
 # ==============================================================================
-    # LIMPIEZA FINAL DEL CICLO EN Z:\TRABAJO Y CARPETA ERROR SI ESTA VACIA
+    # LIMPIEZA FINAL DEL CICLO EN Z:\TRABAJOX Y CARPETA ERROR SI ESTA VACIA
     # ==============================================================================
     Remove-Item -LiteralPath $rutaTemporalOrigen -Force -ErrorAction SilentlyContinue
     Remove-Item -Path "$directorioVirtual\*" -Recurse -Force -ErrorAction SilentlyContinue
