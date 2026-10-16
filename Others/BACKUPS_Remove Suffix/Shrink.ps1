@@ -1,271 +1,271 @@
-﻿param([string]$RutaEntrada = "", [string]$RutaSalida = "", [string]$RutaInforme = "")
+param([string]$InputPath = "", [string]$OutputPath = "", [string]$ReportPath = "")
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::InputEncoding = [System.Text.Encoding]::UTF8
 
-"Start: $(Get-Date)"  | Out-File -FilePath $RutaInforme -Encoding utf8
+"Inicio: $(Get-Date)"  | Out-File -FilePath $ReportPath -Encoding utf8
 
-if (-not (Test-Path -LiteralPath $RutaEntrada)) { 
-    Write-Host "The input directory does not exist: $RutaEntrada" -ForegroundColor Red
+if (-not (Test-Path -LiteralPath $InputPath)) { 
+    Write-Host "The input directory does not exist: $InputPath" -ForegroundColor Red
     break 
 }
 
-if (-not (Test-Path -LiteralPath $RutaSalida)) { 
-    New-Item -ItemType Directory -Path $RutaSalida -Force | Out-Null 
+if (-not (Test-Path -LiteralPath $OutputPath)) { 
+    New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null 
 }
 
 # ==============================================================================
 # DYNAMIC ALLOCATION OF WORKX INSTANCE (Prevents scripts from overlapping)
 # ==============================================================================
-$instanciaNum = 1
+$InstanceNumIndex = 1
 do {
-    $directorioVirtual = "Z:\Trabajo$instanciaNum"
-    $instanciaNum++
-} while (Get-ChildItem -LiteralPath $directorioVirtual -Force -ErrorAction SilentlyContinue)
+    $VirtualWorkDir = "Z:\Trabajo$InstanceNumIndex"
+    $InstanceNumIndex++
+} while (Get-ChildItem -LiteralPath $VirtualWorkDir -Force -ErrorAction SilentlyContinue)
 
 # Create and reserve the folder immediately so another instance doesn't take it
-New-Item -ItemType Directory -Path $directorioVirtual -Force | Out-Null
+New-Item -ItemType Directory -Path $VirtualWorkDir -Force | Out-Null
 
 
 # ==============================================================================
 # PHASE 0: INITIAL RECOVERY OF INTERRUPTED .TMP FILES
 # ==============================================================================
-Remove-Item -Path "$directorioVirtual\*" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$VirtualWorkDir\*" -Recurse -Force -ErrorAction SilentlyContinue
 
-foreach ($tmp in (Get-ChildItem -Path $RutaEntrada -File | Where-Object Extension -eq '.tmp')) {
-    $nombreRestaurado = $tmp.Name -replace '\.tmp$', ''
-    $rutaRestaurada = Join-Path $RutaEntrada $nombreRestaurado
+foreach ($tmp in (Get-ChildItem -Path $InputPath -File | Where-Object Extension -eq '.tmp')) {
+    $RestoredName = $tmp.Name -replace '\.tmp$', ''
+    $RestoredPath = Join-Path $InputPath $RestoredName
 
 # If it is locked by the other running script, it skips and does nothing
-    $estaBloqueado = $false
+    $Locked = $false
     try {
-        $streamPrueba = [System.IO.File]::Open($tmp.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
-        $streamPrueba.Close()
+        $StreamProbe = [System.IO.File]::Open($tmp.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        $StreamProbe.Close()
     } catch {
-        $estaBloqueado = $true
+        $Locked = $true
     }
-    if ($estaBloqueado) { continue }
+    if ($Locked) { continue }
 
-    if (-not (Test-Path -LiteralPath $rutaRestaurada)) { 
-        Rename-Item -LiteralPath $tmp.FullName -NewName $nombreRestaurado -Force -ErrorAction SilentlyContinue 
+    if (-not (Test-Path -LiteralPath $RestoredPath)) { 
+        Rename-Item -LiteralPath $tmp.FullName -NewName $RestoredName -Force -ErrorAction SilentlyContinue 
     } else {
-        if ($tmp.Length -eq (Get-Item -LiteralPath $rutaRestaurada).Length) { 
+        if ($tmp.Length -eq (Get-Item -LiteralPath $RestoredPath).Length) { 
             Remove-Item -LiteralPath $tmp.FullName -Force -ErrorAction SilentlyContinue 
         } else { 
-            $extOriginal = [System.IO.Path]::GetExtension($nombreRestaurado)
-            Rename-Item -LiteralPath $tmp.FullName -NewName "${nombreRestaurado}${extOriginal}" -Force -ErrorAction SilentlyContinue 
+            $OriginalExt = [System.IO.Path]::GetExtension($RestoredName)
+            Rename-Item -LiteralPath $tmp.FullName -NewName "${RestoredName}${OriginalExt}" -Force -ErrorAction SilentlyContinue 
         }
     }
 }
 
-$RutaCarpetaOtros = Join-Path $PSScriptRoot "Others"
-$RutaFfmpeg = Join-Path $RutaCarpetaOtros "ffmpeg.exe"
-$RutaFfprobe = $RutaFfmpeg -replace "ffmpeg\.exe", "ffprobe.exe"
+$BinariesDir = Join-Path $PSScriptRoot "Others"
+$FfmpegPath = Join-Path $BinariesDir "ffmpeg.exe"
+$FfprobePath = $FfmpegPath -replace "ffmpeg\.exe", "ffprobe.exe"
 
-$extensionesVideo = @('.3gp', '.asf', '.avi', '.flv', '.m2ts', '.m4v', '.mkv', '.mov', '.mp4','.mpe', '.mpeg', '.mpg', '.mts', '.ogv','.rmvb', '.ts', '.vob', '.webm', '.wmv')
+$AllowedExtensions = @('.3gp', '.asf', '.avi', '.flv', '.m2ts', '.m4v', '.mkv', '.mov', '.mp4','.mpe', '.mpeg', '.mpg', '.mts', '.ogv','.rmvb', '.ts', '.vob', '.webm', '.wmv')
 
-$indiceActual = 0
-$indiceERR = 0
-$tiempoGlobalInicio = Get-Date
-$pesoTotalInicialBytes = 0
-$pesoTotalFinalBytes = 0
-$totalArchivos =0
+$ProcessedFilesCount = 0
+$FailedFilesCount = 0
+$GlobalStartTime = Get-Date
+$TotalInitialBytes = 0
+$TotalFinalBytes = 0
+$TotalQueuedFiles =0
 
-$mismoDisco = (Get-Item -LiteralPath $RutaEntrada).PSDrive.Name -eq (Get-Item -LiteralPath $RutaSalida).PSDrive.Name
+$SameDrive = (Get-Item -LiteralPath $InputPath).PSDrive.Name -eq (Get-Item -LiteralPath $OutputPath).PSDrive.Name
 
 
 # Valid videos are filtered and strictly sorted alphabetically
 do {
-# $colaArchivos = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
-   $colaArchivos = New-Object System.Collections.Generic.List[System.IO.FileInfo]
-Get-ChildItem -Path $RutaEntrada -File | Where-Object { 
-    $extensionesVideo -contains $_.Extension.ToLower() -and 
+# $FileQueue = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
+   $FileQueue = New-Object System.Collections.Generic.List[System.IO.FileInfo]
+Get-ChildItem -Path $InputPath -File | Where-Object { 
+    $AllowedExtensions -contains $_.Extension.ToLower() -and 
     $_.Name -notmatch '_H265\.mp4$' -and
     $_.Name -notmatch '_H265\.mkv$' -and
     $_.Extension -ne '.tmp'
-} | Sort-Object Name | ForEach-Object { $colaArchivos.Add($_) }
+} | Sort-Object Name | ForEach-Object { $FileQueue.Add($_) }
 
-$totalArchivos += $colaArchivos.Count
+$TotalQueuedFiles += $FileQueue.Count
 
-if ($colaArchivos.Count -eq 0) { 
-    Write-Host "No valid video files were found to process in: $RutaEntrada" -ForegroundColor Yellow
-#   Remove-Item -LiteralPath $directorioVirtual -Recurse -Force -ErrorAction SilentlyContinue
+if ($FileQueue.Count -eq 0) { 
+    Write-Host "No video files were found to process: $InputPath" -ForegroundColor Yellow
+#   Remove-Item -LiteralPath $VirtualWorkDir -Recurse -Force -ErrorAction SilentlyContinue
    break 
 } else {
-    Write-Host "Processing $totalArchivos archivo(s)." -ForegroundColor Green 
+    Write-Host "Processing $TotalQueuedFiles Files." -ForegroundColor Green 
 }
  
 Write-Host "Start: $(Get-Date)"
 Write-Host ""
 
-while ($colaArchivos.Count -gt 0) {
-     $candidatoLista = $colaArchivos[0]
-     $colaArchivos.RemoveAt(0)
-    $rutaArchivoOriginal = Join-Path $RutaEntrada $candidatoLista.Name
-    $original = Get-Item -LiteralPath $rutaArchivoOriginal -ErrorAction SilentlyContinue
-    if ($null -eq $original -or $original.Extension -eq '.tmp') { continue }
-    $nombreCompleto = $original.Name
-    $rutaTemporalOrigen = "$($original.FullName).tmp"
-    $pesoBytesInicial = $original.Length
-    $pesoInicialMB = [Math]::Round($pesoBytesInicial / 1MB, 2)
-    $pesoInicialStr = "$pesoInicialMB MB"
-    $inicioArchivo = Get-Date
+while ($FileQueue.Count -gt 0) {
+     $CurrentFileCandidate = $FileQueue[0]
+     $FileQueue.RemoveAt(0)
+    $OriginalFilePath = Join-Path $InputPath $CurrentFileCandidate.Name
+    $CurrentFileInfo = Get-Item -LiteralPath $OriginalFilePath -ErrorAction SilentlyContinue
+    if ($null -eq $CurrentFileInfo -or $CurrentFileInfo.Extension -eq '.tmp') { continue }
+    $OriginalFileName = $CurrentFileInfo.Name
+    $TempSourcePath = "$($CurrentFileInfo.FullName).tmp"
+    $SourceFileSizeBytes = $CurrentFileInfo.Length
+    $SourceFileSizeMB = [Math]::Round($SourceFileSizeBytes / 1MB, 2)
+    $SourceFileSizeStr = "$SourceFileSizeMB MB"
+    $FileStartTime = Get-Date
     try { 
-        Rename-Item -LiteralPath $original.FullName -NewName "$nombreCompleto.tmp" -Force -ErrorAction Stop 
-        $bloqueoExclusivo = [System.IO.File]::Open($rutaTemporalOrigen, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete)
+        Rename-Item -LiteralPath $CurrentFileInfo.FullName -NewName "$OriginalFileName.tmp" -Force -ErrorAction Stop 
+        $ExclusiveFileLock = [System.IO.File]::Open($TempSourcePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete)
     } catch { 
-        $copiaVirtualOriginal = $null
-        $rutaSalidaTemporal = $null
+        $VirtualSourceCopy = $null
+        $VirtualTempOutputPath = $null
         continue 
     }
-    $indiceActual++
-    $pesoTotalInicialBytes += $pesoBytesInicial
-    $rutaDestinoFallo = Join-Path $RutaEntrada "ERROR"
-    $copiaVirtualOriginal = Join-Path $directorioVirtual $nombreCompleto
-    $rutaSalidaTemporal = Join-Path $directorioVirtual "FF_.mkv"
+    $ProcessedFilesCount++
+    $TotalInitialBytes += $SourceFileSizeBytes
+    $ErrorDestPath = Join-Path $InputPath "ERROR"
+    $VirtualSourceCopy = Join-Path $VirtualWorkDir $OriginalFileName
+    $VirtualTempOutputPath = Join-Path $VirtualWorkDir "FF_.mkv"
 
-    [Console]::Write("`r$([char]27)[2K$([char]27)[36mProcessing $indiceActual de $totalArchivos   $pesoInicialStr - Inicio:$inicioArchivo$([char]27)[0m")
+    [Console]::Write("`r$([char]27)[2K$([char]27)[36mProcessing $ProcessedFilesCount of $TotalQueuedFiles   $SourceFileSizeStr - Start:$FileStartTime$([char]27)[0m")
     [Console]::Out.Flush()
 
   # 2. Copy file from Source to Z:\WorkX with its original name
-  #  Copy-Item -LiteralPath $rutaTemporalOrigen -Destination $copiaVirtualOriginal -Force  
-      cmd.exe /c copy /b /y "$rutaTemporalOrigen" "$copiaVirtualOriginal" > $null
+  #  Copy-Item -LiteralPath $TempSourcePath -Destination $VirtualSourceCopy -Force  
+      cmd.exe /c copy /b /y "$TempSourcePath" "$VirtualSourceCopy" > $null
 
     # 3. FFmpeg is executed on Z:\Trabajo cleanly (without stats or console noise)
-    Push-Location $RutaCarpetaOtros
-    $maximo = (Get-Item -LiteralPath $copiaVirtualOriginal).Length 
+    Push-Location $BinariesDir
+    $Maximum = (Get-Item -LiteralPath $VirtualSourceCopy).Length 
 
-# Automatic frame rate extraction via ffprobe
-   $FpsBruto = & "$RutaFfprobe" -v quiet -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 "$copiaVirtualOriginal" 2>$null
-    $ArgTasa = if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($FpsBruto) -and $FpsBruto.Trim() -ne "0/0") { @("-r", $FpsBruto.Trim()) } else { @() }
+# Automatic frame rate extraction via ffprobee
+   $RawFrameRate = & "$FfprobePath" -v quiet -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 "$VirtualSourceCopy" 2>$null
+    $FfmpegFpsArg = if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($RawFrameRate) -and $RawFrameRate.Trim() -ne "0/0") { @("-r", $RawFrameRate.Trim()) } else { @() }
 
-& "$RutaFfmpeg" -strict experimental -hide_banner -threads 0 -hwaccel auto -nostdin -nostats -loglevel quiet -i "$copiaVirtualOriginal" -fs $maximo @ArgTasa -vf "scale='min(1920,iw)':-2:flags=lanczos" -c:v hevc_nvenc -b_ref_mode 0 -crf $env:QC -qp $env:QC -profile:v main -map v:0? -c:a copy -map a? -pix_fmt yuv420p -tag:v hvc1 -y "$rutaSalidaTemporal"   2>&1 | Out-Null
+& "$FfmpegPath" -strict experimental -hide_banner -threads 0 -hwaccel auto -nostdin -nostats -loglevel quiet -i "$VirtualSourceCopy" -fs $Maximum @FfmpegFpsArg -vf "scale='min(1920,iw)':-2:flags=lanczos" -c:v hevc_nvenc -b_ref_mode 0 -crf $env:QC -qp $env:QC -profile:v main -map v:0? -c:a copy -map a? -pix_fmt yuv420p -tag:v hvc1 -y "$VirtualTempOutputPath"   2>&1 | Out-Null
 
  Pop-Location
 
  # Error or corrupt/invalid files unified check
  Start-Sleep -Milliseconds 100
 
- $pesoBytesGenerado = if (Test-Path -LiteralPath $rutaSalidaTemporal) { (Get-Item -LiteralPath $rutaSalidaTemporal).Length } else { 0 }
+ $OutputBytesGenerated = if (Test-Path -LiteralPath $VirtualTempOutputPath) { (Get-Item -LiteralPath $VirtualTempOutputPath).Length } else { 0 }
 
-    if ($LASTEXITCODE -ne 0 -or $pesoBytesGenerado -le 10240 -or ([double]$pesoBytesGenerado -lt ([double]$pesoBytesInicial * 0.1))) {
+    if ($LASTEXITCODE -ne 0 -or $OutputBytesGenerated -le 10240 -or ([double]$OutputBytesGenerated -lt ([double]$SourceFileSizeBytes * 0.1))) {
         try {
-            Move-Item -LiteralPath $rutaTemporalOrigen -Destination "$rutaDestinoFallo\$nombreCompleto" -Force -ErrorAction Stop
+            Move-Item -LiteralPath $TempSourcePath -Destination "$ErrorDestPath\$OriginalFileName" -Force -ErrorAction Stop
         } catch {
-            Write-Host "[WARNING] Could not move corrupt file in this cycle: ($nombreCompleto)" -ForegroundColor Yellow
+            Write-Host "[WARNING] Could not move corrupt file in this cycle: ($OriginalFileName)" -ForegroundColor Yellow
         }
-        Remove-Item -Path "$directorioVirtual\*" -Recurse -Force -ErrorAction SilentlyContinue
-        $indiceERR++
-        [Console]::Write("`r$([char]27)[2K[Processing $indiceActual of $totalArchivos]   $pesoInicialStr -> ERR`n")
+        Remove-Item -Path "$VirtualWorkDir\*" -Recurse -Force -ErrorAction SilentlyContinue
+        $FailedFilesCount++
+        [Console]::Write("`r$([char]27)[2K[Processing $ProcessedFilesCount of $TotalQueuedFiles]   $SourceFileSizeStr -> ERR`n")
         continue
     }
 
-    if ([double]$pesoBytesGenerado -ge [double]$maximo) {
-       Copy-Item -LiteralPath $copiaVirtualOriginal -Destination $rutaSalidaTemporal -Force
+    if ([double]$OutputBytesGenerated -ge [double]$Maximum) {
+       Copy-Item -LiteralPath $VirtualSourceCopy -Destination $VirtualTempOutputPath -Force
     }
  
-    $pesoGeneradoMB = [Math]::Round($pesoBytesGenerado / 1MB, 2) 
-    $pesoGeneradoStr = "$pesoGeneradoMB MB"
+    $OutputSizeMB = [Math]::Round($OutputBytesGenerated / 1MB, 2) 
+    $OutputSizeStr = "$OutputSizeMB MB"
     
+
     # Real final size determination
-    $pesoBytesFinal = if ((Get-Item -LiteralPath $rutaSalidaTemporal).Length -lt $pesoBytesInicial) { (Get-Item -LiteralPath $rutaSalidaTemporal).Length } else { $pesoBytesInicial }
-    $pesoTotalFinalBytes +=$pesoBytesFinal
+    $FinalFileSizeBytes = if ((Get-Item -LiteralPath $VirtualTempOutputPath).Length -lt $SourceFileSizeBytes) { (Get-Item -LiteralPath $VirtualTempOutputPath).Length } else { $SourceFileSizeBytes }
+    $TotalFinalBytes +=$FinalFileSizeBytes
 
-    if ($null -ne $bloqueoExclusivo) { $bloqueoExclusivo.Close(); $bloqueoExclusivo = $null }
+    if ($null -ne $ExclusiveFileLock) { $ExclusiveFileLock.Close(); $ExclusiveFileLock = $null }
 
-    $finArchivo = Get-Date
-    $duracionArchivo = $finArchivo -$inicioArchivo
-    $duracionFormateada =$duracionArchivo.ToString("hh\:mm\:ss")
+    $FileEndTime = Get-Date
+    $FileDuration = $FileEndTime -$FileStartTime
+    $FileDurationStr =$FileDuration.ToString("hh\:mm\:ss")
 
-    $pesoFinalMB = [Math]::Round($pesoBytesFinal / 1MB, 2)
-    $diferencia = $pesoFinalMB -$pesoInicialMB
-    if ($pesoInicialMB -gt 0) {
-        $porcentaje = [Math]::Round(($diferencia / $pesoInicialMB) * 100)     } else {$porcentaje = 0
+    $FinalFileSizeMB = [Math]::Round($FinalFileSizeBytes / 1MB, 2)
+    $SizeDifferenceMB = $FinalFileSizeMB -$SourceFileSizeMB
+    if ($SourceFileSizeMB -gt 0) {
+        $CompressionRatio = [Math]::Round(($SizeDifferenceMB / $SourceFileSizeMB) * 100)     } else {$CompressionRatio = 0
     }
-    $porcentajeStr = if ($porcentaje -ge 0) { "+$porcentaje%" } else { "$porcentaje%" }
-    $velocidadStr = if ($duracionArchivo.TotalSeconds -gt 0) { $s = $pesoBytesInicial / $duracionArchivo.TotalSeconds; "$([Math]::Round($s / 1MB, 2)) MB/s" } else { "0 MB/s" }
+    $CompressionRatioStr = if ($CompressionRatio -ge 0) { "+$CompressionRatio%" } else { "$CompressionRatio%" }
+    $ProcessingSpeedStr = if ($FileDuration.TotalSeconds -gt 0) { $s = $SourceFileSizeBytes / $FileDuration.TotalSeconds; "$([Math]::Round($s / 1MB, 2)) MB/s" } else { "0 MB/s" }
 
-$lineaInformeArchivo = "Processing $indiceActual + $indiceERR  de $totalArchivos  $pesoInicialStr -> $pesoGeneradoStr    ($porcentajeStr)    Time: $duracionFormateada    Speed:$velocidadStr"
-Add-Content -Path $RutaInforme -Value $lineaInformeArchivo -Encoding utf8
+$ReportLineStr = "Processing $ProcessedFilesCount + $FailedFilesCount of  $TotalQueuedFiles  $SourceFileSizeStr -> $OutputSizeStr    ($CompressionRatioStr)    Time: $FileDurationStr    Speed:$ProcessingSpeedStr"
+Add-Content -Path $ReportPath -Value $ReportLineStr -Encoding utf8
 
-      $origenInfo = Get-Item -LiteralPath $copiaVirtualOriginal -ErrorAction SilentlyContinue   2>$null
-        $generadoInfo = Get-Item -LiteralPath $rutaSalidaTemporal
+      $VirtualSourceInfo = Get-Item -LiteralPath $VirtualSourceCopy -ErrorAction SilentlyContinue   2>$null
+        $VirtualOutputInfo = Get-Item -LiteralPath $VirtualTempOutputPath
 
-        $destinoFinal = Join-Path $RutaSalida $nombreCompleto
+        $FinalDestinationPath = Join-Path $OutputPath $OriginalFileName
 
         # 4. Byte sizes comparison
-        if ($generadoInfo.Length -lt $origenInfo.Length) {
+        if ($VirtualOutputInfo.Length -lt $VirtualSourceInfo.Length) {
             # ==============================================================================
             # CASE B: THE COMPRESSED ONE IS SMALLER
             # ==============================================================================           
  
-            if (Test-Path -LiteralPath $destinoFinal) {
-                if ((Get-Item -LiteralPath $destinoFinal).Length -eq $generadoInfo.Length) {
+            if (Test-Path -LiteralPath $FinalDestinationPath) {
+                if ((Get-Item -LiteralPath $FinalDestinationPath).Length -eq $VirtualOutputInfo.Length) {
                     # Do nothing
                 } else {
-                    $nombreFinalColision = "${nombreCompleto}.mkv"
-                    Copy-Item -LiteralPath $generadoInfo.FullName -Destination (Join-Path $RutaSalida $nombreFinalColision) -Force
+                    $CollisionFileName = "${OriginalFileName}.mkv"
+                    Copy-Item -LiteralPath $VirtualOutputInfo.FullName -Destination (Join-Path $OutputPath $CollisionFileName) -Force
                 }
             } else {
-                Copy-Item -LiteralPath $generadoInfo.FullName -Destination $destinoFinal -Force
+                Copy-Item -LiteralPath $VirtualOutputInfo.FullName -Destination $FinalDestinationPath -Force
             }
         } 
         else {
             # ==============================================================================
             # CASE A: THE ORIGINAL ONE IS SMALLER
             # ==============================================================================
-            if (Test-Path -LiteralPath $destinoFinal) {
-                $mismoTamano = (Get-Item -LiteralPath $destinoFinal).Length -eq $origenInfo.Length
-                if ($mismoTamano) {
+            if (Test-Path -LiteralPath $FinalDestinationPath) {
+                $SameSize = (Get-Item -LiteralPath $FinalDestinationPath).Length -eq $VirtualSourceInfo.Length
+                if ($SameSize) {
                 } else {
-                    $nombreFinalColision = "${nombreCompleto}.mkv"
-                    $destinoFinalColision = Join-Path $RutaSalida $nombreFinalColision
-                    Copy-Item -LiteralPath $origenInfo.FullName -Destination $destinoFinalColision -Force -ErrorAction SilentlyContinue 2>$null
+                    $CollisionFileName = "${OriginalFileName}.mkv"
+                    $CollisionDestPath = Join-Path $OutputPath $CollisionFileName
+                    Copy-Item -LiteralPath $VirtualSourceInfo.FullName -Destination $CollisionDestPath -Force -ErrorAction SilentlyContinue 2>$null
                 }
             } else {
-                if ($mismoDisco) {
-                    Rename-Item -LiteralPath $rutaTemporalOrigen -NewName $nombreCompleto -Force
-                    $rutaRestaurada = Join-Path $RutaEntrada $nombreCompleto
+                if ($SameDrive) {
+                    Rename-Item -LiteralPath $TempSourcePath -NewName $OriginalFileName -Force
+                    $RestoredPath = Join-Path $InputPath $OriginalFileName
 		 try {
-                    Move-Item -LiteralPath $rutaRestaurada -Destination $destinoFinal -Force
+                    Move-Item -LiteralPath $RestoredPath -Destination $FinalDestinationPath -Force
 
  	         } catch {
                 # If Windows locks the move operation, mark it as .tmp again
-                 Rename-Item -LiteralPath $rutaRestaurada -NewName "$nombreCompleto.tmp" -Force -ErrorAction SilentlyContinue
-                 Write-Host "[WARNING] File lock while moving the original file from: $nombreCompleto" -ForegroundColor Yellow
+                 Rename-Item -LiteralPath $RestoredPath -NewName "$OriginalFileName.tmp" -Force -ErrorAction SilentlyContinue
+                 Write-Host "[WARNING] File lock while moving the original file from: $OriginalFileName" -ForegroundColor Yellow
                 }
                 } else {
-                    Copy-Item -LiteralPath $origenInfo.FullName -Destination $destinoFinal -Force -ErrorAction SilentlyContinue 2>$null
+                    Copy-Item -LiteralPath $VirtualSourceInfo.FullName -Destination $FinalDestinationPath -Force -ErrorAction SilentlyContinue 2>$null
                 }
             }
         }
 
-[Console]::Write("`r$([char]27)[2K[Processing $indiceActual + $indiceERR of $totalArchivos]   $pesoInicialStr -> $pesoGeneradoStr    ($porcentajeStr)    Time: $duracionFormateada    Speed: $velocidadStr`n")
+[Console]::Write("`r$([char]27)[2K[Processing $ProcessedFilesCount + $FailedFilesCount of $TotalQueuedFiles]   $SourceFileSizeStr -> $OutputSizeStr    ($CompressionRatioStr)    Time: $FileDurationStr    Speed: $ProcessingSpeedStr`n")
 
 # ==============================================================================
     # CYCLE END CLEANUP IN Z:\WORK AND FAILURES FOLDER IF EMPTY
     # ==============================================================================
-    Remove-Item -LiteralPath $rutaTemporalOrigen -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path "$directorioVirtual\*" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $TempSourcePath -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$VirtualWorkDir\*" -Recurse -Force -ErrorAction SilentlyContinue
   }
 } while ($true)
  
-Remove-Item -LiteralPath $directorioVirtual -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $VirtualWorkDir -Recurse -Force -ErrorAction SilentlyContinue
 
-#  Remove-Item -LiteralPath "$directorioVirtual" -Recurse -Force -ErrorAction SilentlyContinue
-   
 # Final line break to clear the console after the dynamic counter
+
 Write-Host ""
 
 # ==============================================================================
-# TOTALS AND END BLOCK
+#  TOTALS AND END BLOCK
 # ==============================================================================
-$tiempoGlobalFin = Get-Date
-$duracionGlobal = $tiempoGlobalFin - $tiempoGlobalInicio
-$duracionGlobalFormateada = $duracionGlobal.ToString("hh\:mm\:ss")
+$GlobalEndTime = Get-Date
+$GlobalDuration = $GlobalEndTime - $GlobalStartTime
+$GlobalDurationStr = $GlobalDuration.ToString("hh\:mm\:ss")
 
 # Helper function to format gigabytes/megabytes in a human-readable format
-function Formatear-Bytes {
+function Format-Bytes {
     param([long]$Bytes)
     if ($Bytes -ge 1GB) {
         return "{0:N2} GB" -f ($Bytes / 1GB)
@@ -274,21 +274,21 @@ function Formatear-Bytes {
     }
 }
 
-$pesoTotalInicialStr = Formatear-Bytes $pesoTotalInicialBytes
-$pesoTotalFinalStr = Formatear-Bytes $pesoTotalFinalBytes
+$TotalInitialSizeStr = Format-Bytes $TotalInitialBytes
+$TotalFinalSizeStr = Format-Bytes $TotalFinalBytes
 
-Write-Host "End: $tiempoGlobalFin"
+Write-Host "End: $GlobalEndTime"
 Write-Host ""
-$diferenciaGlobal = $pesoTotalFinalBytes -$pesoTotalInicialBytes
-if ($pesoTotalInicialBytes -gt 0) {
-    $porcentajeGlobal = [Math]::Round(($diferenciaGlobal / $pesoTotalInicialBytes) * 100) } else {$porcentajeGlobal = 0
+$GlobalSizeDifference = $TotalFinalBytes -$TotalInitialBytes
+if ($TotalInitialBytes -gt 0) {
+    $GlobalCompressionRatio = [Math]::Round(($GlobalSizeDifference / $TotalInitialBytes) * 100) } else {$GlobalCompressionRatio = 0
 }
-$porcentajeGlobalStr = if ($porcentajeGlobal -ge 0) { "+$porcentajeGlobal%" } else { "$porcentajeGlobal%" }
-$velocidadGlobalStr = if ($duracionGlobal.TotalSeconds -gt 0) { $sg = $pesoTotalInicialBytes / $duracionGlobal.TotalSeconds; "$([Math]::Round($sg / 1MB, 2)) MB/s" } else { "0 MB/s" }
+$GlobalCompressionRatioStr = if ($GlobalCompressionRatio -ge 0) { "+$GlobalCompressionRatio%" } else { "$GlobalCompressionRatio%" }
+$GlobalSpeedStr = if ($GlobalDuration.TotalSeconds -gt 0) { $sg = $TotalInitialBytes / $GlobalDuration.TotalSeconds; "$([Math]::Round($sg / 1MB, 2)) MB/s" } else { "0 MB/s" }
 
-Add-Content -Path $RutaInforme -Value "__________" -Encoding utf8
+Add-Content -Path $ReportPath -Value "__________" -Encoding utf8
 
-Add-Content -Path $RutaInforme -Value "TOTALS:  $pesoTotalInicialStr -> $pesoTotalFinalStr    ($porcentajeGlobalStr)    Time: $duracionGlobalFormateada    Speed:$velocidadGlobalStr" -Encoding utf8
+Add-Content -Path $ReportPath -Value "TOTALES:  $TotalInitialSizeStr -> $TotalFinalSizeStr    ($GlobalCompressionRatioStr)    Time: $GlobalDurationStr    Speed:$GlobalSpeedStr" -Encoding utf8
 
-Write-Host "    TOTALS:      $pesoTotalInicialStr -> $pesoTotalFinalStr    ($porcentajeGlobalStr)    Time: $duracionGlobalFormateada    Speed:$velocidadGlobalStr" 
+Write-Host "    TOTALS:      $TotalInitialSizeStr -> $TotalFinalSizeStr    ($GlobalCompressionRatioStr)    Time: $GlobalDurationStr    Speed:$GlobalSpeedStr" 
 Write-Host ""

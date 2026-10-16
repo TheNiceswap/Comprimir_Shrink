@@ -1,6 +1,6 @@
 @echo off
 openfiles >nul 2>&1
-if %errorlevel% NEQ 0   powershell -Command "Start-Process -FilePath '%~f0' -Verb RunAs" &  exit /B
+if %errorlevel% NEQ 0   powershell -Command "Start-Process -FilePath '%0' -Verb RunAs" &  exit /B
 
 cd /d "%~dp0"
 
