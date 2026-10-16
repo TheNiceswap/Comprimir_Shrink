@@ -127,7 +127,7 @@ while ($colaArchivos.Count -gt 0) {
     [Console]::Write("`r$([char]27)[2K$([char]27)[36mProcesando $indiceActual de $totalArchivos   $pesoInicialStr - Inicio:$inicioArchivo$([char]27)[0m")
     [Console]::Out.Flush()
 
-  # 2. Se copia el archivo desde Origen a Z:\Trabajo con su nombre original
+  # 2. Se copia el archivo desde Origen a Z:\TrabajoX con su nombre original
   #  Copy-Item -LiteralPath $rutaTemporalOrigen -Destination $copiaVirtualOriginal -Force  
       cmd.exe /c copy /b /y "$rutaTemporalOrigen" "$copiaVirtualOriginal" > $null
 
@@ -140,11 +140,6 @@ while ($colaArchivos.Count -gt 0) {
     $ArgTasa = if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($FpsBruto) -and $FpsBruto.Trim() -ne "0/0") { @("-r", $FpsBruto.Trim()) } else { @() }
 
 & "$RutaFfmpeg" -strict experimental -hide_banner -threads 0 -hwaccel auto -nostdin -nostats -loglevel quiet -i "$copiaVirtualOriginal" -fs $maximo @ArgTasa -vf "scale='min(1920,iw)':-2:flags=lanczos" -c:v hevc_nvenc -b_ref_mode 0 -crf $env:QC -qp $env:QC -profile:v main -map v:0? -c:a copy -map a? -pix_fmt yuv420p -tag:v hvc1 -y "$rutaSalidaTemporal"   2>&1 | Out-Null
-
- # >$null 2>$null
-
- # write-Host "MIRA..."
- # pause
 
  Pop-Location
 
@@ -169,8 +164,6 @@ while ($colaArchivos.Count -gt 0) {
        Copy-Item -LiteralPath $copiaVirtualOriginal -Destination $rutaSalidaTemporal -Force
     }
  
-# write-Host "AQUI"
-# pause
     $pesoGeneradoMB = [Math]::Round($pesoBytesGenerado / 1MB, 2) 
     $pesoGeneradoStr = "$pesoGeneradoMB MB"
     
@@ -181,7 +174,6 @@ while ($colaArchivos.Count -gt 0) {
     $pesoTotalFinalBytes +=$pesoBytesFinal
 
     if ($null -ne $bloqueoExclusivo) { $bloqueoExclusivo.Close(); $bloqueoExclusivo = $null }
-#    $bloqueoExclusivo.Close() 2>$null
 
     $finArchivo = Get-Date
     $duracionArchivo = $finArchivo -$inicioArchivo
@@ -299,9 +291,6 @@ $velocidadGlobalStr = if ($duracionGlobal.TotalSeconds -gt 0) { $sg = $pesoTotal
 Add-Content -Path $RutaInforme -Value "__________" -Encoding utf8
 
 Add-Content -Path $RutaInforme -Value "TOTALES:  $pesoTotalInicialStr -> $pesoTotalFinalStr    ($porcentajeGlobalStr)    Tiempo: $duracionGlobalFormateada    Vel:$velocidadGlobalStr" -Encoding utf8
-
-# Write-Host ("TOTALES:`t`t{0} -> {1}    `t({2})    `tTiempo: {3}    `tVel: {4}" -f $pesoTotalInicialStr, $pesoTotalFinalStr,$porcentajeGlobalStr, 
-# $duracionGlobalFormateada,$velocidadGlobalStr)
 
 Write-Host "    TOTALES:      $pesoTotalInicialStr -> $pesoTotalFinalStr    ($porcentajeGlobalStr)    Tiempo: $duracionGlobalFormateada    Vel:$velocidadGlobalStr" 
 Write-Host ""
