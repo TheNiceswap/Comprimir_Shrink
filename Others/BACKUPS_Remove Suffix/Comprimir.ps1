@@ -1,5 +1,4 @@
-<<<<<<< HEAD
-﻿param([string]$RutaEntrada = "", [string]$RutaSalida = "", [string]$RutaInforme = "")
+param([string]$RutaEntrada = "", [string]$RutaSalida = "", [string]$RutaInforme = "")
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::InputEncoding = [System.Text.Encoding]::UTF8
