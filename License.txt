@@ -1,0 +1,56 @@
+=======================================================================
+ CREDITS & LICENSES / CRÉDITOS Y LICENCIAS
+=======================================================================
+
+1. AUTOMATION SCRIPTS / SCRIPTS DE AUTOMATIZACIÓN:
+   --------------------------------------------------------------------
+   - Author / Autor: Fernando Domínguez Casares
+   - Description / Descripción: Custom architecture for parallel video encoding via RAM Disk.
+                                Arquitectura personalizada para codificación paralela de vídeo mediante RAM Disk.
+   - Copyright: Copyright (c) 2026. All rights reserved to the author. / Todos los derechos reservados al autor.
+   - License / Licencia: Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International 
+                         Creative Commons Atribución-NoComercial-SinDerivadas 4.0 Internacional
+                         (CC BY-NC-ND 4.0)
+                         https://creativecommons.org
+                         https://gnu.org
+
+   - Terms / Términos:
+     [ENGLISH]
+     You are free to copy and redistribute the material in any medium or format. 
+     The licensor cannot revoke these freedoms as long as you follow the license terms:
+     - Attribution — You must give appropriate credit, provide a link to the license, and indicate if changes were made.
+     - NonCommercial — You may not use the material for commercial purposes.
+     - NoDerivatives — If you remix, transform, or build upon the material, you may not distribute the modified material.
+     - No additional restrictions — You may not apply legal terms or technological measures that legally restrict others from doing anything the license permits.
+
+     [ESPAÑOL]
+     Usted es libre de copiar y redistribuir el material en cualquier medio o formato. 
+     El licenciador no puede revocar estas libertades mientras cumpla con los términos de la licencia:
+     - Atribución — Debe dar el crédito apropiado, proporcionar un enlace a la licencia e indicar si se realizaron cambios.
+     - NoComercial — No puede utilizar el material con fines comerciales.
+     - SinDerivadas — Si remezcla, transforma o crea a partir del material, no puede distribuir el material modificado.
+     - No hay restricciones adicionales — No puede aplicar términos legales o medidas tecnológicas que restrinjan legalmente a otros hacer cualquier cosa que la licencia permita.
+
+2. THIRD-PARTY COMPONENTS / COMPONENTES DE TERCEROS (FFmpeg, ffprobe & ImDisk):
+   --------------------------------------------------------------------
+   - FFmpeg & ffprobe:
+     * Authors / Autores: FFmpeg cutting-edge developers (https://ffmpeg.org) / Desarrolladores activos de FFmpeg
+     * Copyright: Copyright (c) 2000-2026 the FFmpeg developers. / los desarrolladores de FFmpeg.
+     * License / Licencia: GNU Lesser General Public License (LGPL) version 2.1 or later (https://gnu.org) / 
+                           Licencia Pública General Reducida de GNU (LGPL) versión 2.1 o posterior (https://gnu.org)
+   
+   - ImDisk Virtual Disk Driver:
+     * Author / Autor: Olof Lagerkvist (https://ltr-data.se)
+     * Copyright: Copyright (c) 2004-2026 Olof Lagerkvist.
+     * License / Licencia: GNU General Public License (GPL) version 2 or later /
+                           Licencia Pública General de GNU (GPL) versión 2 o posterior
+   
+
+3. DISCLAIMER / EXENCIÓN DE RESPONSABILIDAD:
+   --------------------------------------------------------------------
+   [ENGLISH]
+   This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License and GNU General Public License for more details.
+     
+   [ESPAÑOL]
+   Este programa se distribuye con la esperanza de que sea útil, pero SIN NINGUNA GARANTÍA; ni siquiera la garantía implícita de COMERCIABILIDAD o APTITUD PARA UN PROPÓSITO PARTICULAR. Para más detalles, consulte la Licencia Pública General Reducida de GNU y la Licencia Pública General de GNU.
+=======================================================================
