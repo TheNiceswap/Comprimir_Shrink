@@ -1,7 +1,0 @@
-# Ignorar archivos ocultos del sistema de Windows
-Thumbs.db
-desktop.ini
-
-# Ignorar archivos temporales de edición si abres los scripts con VS Code u otros editores
-.vscode/
-*.log
