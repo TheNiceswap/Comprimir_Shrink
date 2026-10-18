@@ -1,1 +1,0 @@
-imdisk -a -t vm -s %RAM%G -m Z: >nul
