@@ -1,0 +1,24 @@
+REM        --- VALORES BASE para cambiar / BASE VALUES to change  ---
+
+set "ENTRADA_INPUT=INPUT_PATH"              REM  e.g  .\SOURCE
+set "SALIDA_OUTPUT=OUTPUT_PATH"          REM  e.g  .\DESTINATION
+set "INFORME_REPORT=REPORTS_PATH"     REM  e.g. .\REPORTS   
+set TRABAJO_WORK=Z:
+set /A MIN_Z=10
+set /A MARGIN=5
+
+set QC=26
+
+
+REM         --- ASIGNACIONES EN ESPAÑOL (Para Haz.bat) ---
+set RutaEntrada=%ENTRADA_INPUT%
+set RutaSalida=%SALIDA_OUTPUT%
+set RutaInforme=%INFORME_REPORT%
+set RutaTrabajoBase=%TRABAJO_WORK%
+
+
+REM         --- ENGLISH ASSIGNMENTS (For Run.bat) ---
+set InputPath=%ENTRADA_INPUT%
+set OutputPath=%SALIDA_OUTPUT%
+set ReportPath=%INFORME_REPORT%
+set BaseWorkPath=%TRABAJO_WORK%
